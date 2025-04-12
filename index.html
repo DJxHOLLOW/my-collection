@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>🎬 Movie Collections</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: sans-serif;
+      background: #121212;
+      color: #fff;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #fca311;
+    }
+    .auth, .form, .collections {
+      max-width: 600px;
+      margin: 20px auto;
+      background: #1e1e1e;
+      padding: 20px;
+      border-radius: 10px;
+    }
+    input, button {
+      width: 100%;
+      padding: 10px;
+      margin: 8px 0;
+      border-radius: 8px;
+      border: none;
+      font-size: 1rem;
+    }
+    input {
+      background: #2c2c2c;
+      color: #fff;
+    }
+    input::placeholder {
+      color: #aaa;
+    }
+    button {
+      background-color: #fca311;
+      color: #000;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .logout {
+      margin-top: 10px;
+      background: crimson;
+      color: white;
+    }
+    .collection {
+      background: #1e1e1e;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-top: 20px;
+    }
+    .collection-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px;
+      cursor: pointer;
+      background-color: #2a2a2a;
+    }
+    .collection-header img {
+      width: 50px;
+      height: 75px;
+      object-fit: cover;
+      border-radius: 8px;
+      margin-right: 15px;
+    }
+    .collection-header h3 {
+      flex: 1;
+      margin: 0;
+      color: #fca311;
+    }
+    .collection-header button {
+      width: auto;
+      padding: 6px 10px;
+      background-color: crimson;
+      color: white;
+      border-radius: 6px;
+    }
+    .movie-list {
+      display: none;
+      flex-wrap: wrap;
+      gap: 15px;
+      padding: 15px;
+      border-top: 1px solid #333;
+      justify-content: center;
+    }
+    .movie {
+      width: 120px;
+      text-align: center;
+      position: relative;
+    }
+    .movie img {
+      width: 100%;
+      border-radius: 8px;
+    }
+    .movie-title {
+      margin-top: 5px;
+      font-size: 0.9rem;
+    }
+    .progress-bar {
+      height: 6px;
+      background-color: #007bff;
+      border-radius: 4px;
+      margin-top: 4px;
+    }
+    .delete-movie {
+      margin-top: 4px;
+      background-color: crimson;
+      color: white;
+      font-size: 0.8rem;
+      padding: 4px 6px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<h1>🎬 Movie Collections</h1>
+
+<div class="auth" id="authSection">
+  <input type="text" id="username" placeholder="Username" />
+  <input type="password" id="password" placeholder="Password" />
+  <button onclick="login()">Login / Sign Up</button>
+</div>
+
+<div id="appSection" style="display:none;">
+  <div class="form">
+    <p>👋 Logged in as: <strong id="userLabel"></strong></p>
+    <input type="text" id="movieTitle" placeholder="Movie title (e.g. Inception)" />
+    <input type="text" id="collectionName" placeholder="Collection (or leave blank)" />
+    <button onclick="addMovie()">Add Movie</button>
+    <button class="logout" onclick="logout()">Logout</button>
+  </div>
+
+  <div class="collections" id="collectionsContainer"></div>
+</div>
+
+<script>
+  const apiKey = "57fb01bb";
+  let currentUser = localStorage.getItem("currentUser") || null;
+  const collections = {};
+
+  if (currentUser) {
+    document.getElementById("authSection").style.display = "none";
+    document.getElementById("appSection").style.display = "block";
+    document.getElementById("userLabel").textContent = currentUser;
+    loadCollections();
+    renderCollections();
+  }
+
+  function login() {
+    const user = document.getElementById("username").value.trim();
+    const pass = document.getElementById("password").value.trim();
+
+    if (!user || !pass) return alert("Please enter username and password.");
+
+    const users = JSON.parse(localStorage.getItem("users") || "{}");
+    if (!users[user]) {
+      users[user] = pass;
+      localStorage.setItem("users", JSON.stringify(users));
+    } else if (users[user] !== pass) {
+      return alert("Wrong password.");
+    }
+
+    currentUser = user;
+    localStorage.setItem("currentUser", currentUser);
+    document.getElementById("authSection").style.display = "none";
+    document.getElementById("appSection").style.display = "block";
+    document.getElementById("userLabel").textContent = currentUser;
+
+    loadCollections();
+    renderCollections();
+  }
+
+  function logout() {
+    currentUser = null;
+    localStorage.removeItem("currentUser");
+    document.getElementById("authSection").style.display = "block";
+    document.getElementById("appSection").style.display = "none";
+  }
+
+  function saveCollections() {
+    if (!currentUser) return;
+    localStorage.setItem("collections_" + currentUser, JSON.stringify(collections));
+  }
+
+  function loadCollections() {
+    if (!currentUser) return;
+    const saved = localStorage.getItem("collections_" + currentUser);
+    for (let key in collections) delete collections[key];
+    if (saved) Object.assign(collections, JSON.parse(saved));
+  }
+
+  async function addMovie() {
+    const title = document.getElementById("movieTitle").value.trim();
+    const collection = document.getElementById("collectionName").value.trim() || "No Collection";
+
+    if (!title) return alert("Please enter a movie title.");
+
+    for (const movies of Object.values(collections)) {
+      if (movies.some(movie => movie.title.toLowerCase() === title.toLowerCase())) {
+        alert(`"${title}" is already in your collections.`);
+        return;
+      }
+    }
+
+    try {
+      const res = await fetch(`https://www.omdbapi.com/?t=${encodeURIComponent(title)}&apikey=${apiKey}`);
+      const data = await res.json();
+
+      if (data.Response === "False") return alert("Movie not found!");
+
+      const poster = data.Poster !== "N/A" ? data.Poster : "https://via.placeholder.com/300x450?text=No+Image";
+      if (!collections[collection]) collections[collection] = [];
+      collections[collection].push({ title: data.Title, imgURL: poster, time: 0, duration: parseInt(data.Runtime) || 120 });
+
+      saveCollections();
+      renderCollections();
+
+      document.getElementById("movieTitle").value = '';
+      document.getElementById("collectionName").value = '';
+    } catch (e) {
+      alert("Error fetching movie.");
+      console.error(e);
+    }
+  }
+
+  function renderCollections() {
+    const container = document.getElementById("collectionsContainer");
+    container.innerHTML = '';
+
+    Object.entries(collections).forEach(([name, movies]) => {
+      if (!movies.length) return;
+
+      const colDiv = document.createElement('div');
+      colDiv.className = 'collection';
+
+      const header = document.createElement('div');
+      header.className = 'collection-header';
+
+      const img = document.createElement('img');
+      img.src = movies[0].imgURL;
+
+      const title = document.createElement('h3');
+      title.textContent = name;
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.textContent = "Delete";
+      deleteBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (confirm(`Delete collection "${name}"?`)) {
+          delete collections[name];
+          saveCollections();
+          renderCollections();
+        }
+      };
+
+      header.appendChild(img);
+      header.appendChild(title);
+      header.appendChild(deleteBtn);
+
+      const movieList = document.createElement('div');
+      movieList.className = 'movie-list';
+
+      movies.forEach((movie, index) => {
+        const movieDiv = document.createElement('div');
+        movieDiv.className = 'movie';
+
+        const movieImg = document.createElement('img');
+        movieImg.src = movie.imgURL;
+        movieImg.onclick = () => {
+          const min = prompt("Minutes watched:", movie.time || 0);
+          if (min !== null) {
+            movie.time = Math.min(parseInt(min), movie.duration || 120);
+            saveCollections();
+            renderCollections();
+          }
+        };
+
+        const movieTitle = document.createElement('div');
+        movieTitle.className = 'movie-title';
+        movieTitle.textContent = movie.title;
+
+        const progress = document.createElement('div');
+        progress.className = 'progress-bar';
+        const pct = Math.min(100, (movie.time || 0) / (movie.duration || 120) * 100);
+        progress.style.width = pct + '%';
+
+        const delMovieBtn = document.createElement('div');
+        delMovieBtn.className = 'delete-movie';
+        delMovieBtn.textContent = 'Remove';
+        delMovieBtn.onclick = () => {
+          collections[name].splice(index, 1);
+          if (collections[name].length === 0) delete collections[name];
+          saveCollections();
+          renderCollections();
+        };
+
+        movieDiv.appendChild(movieImg);
+        movieDiv.appendChild(movieTitle);
+        movieDiv.appendChild(progress);
+        movieDiv.appendChild(delMovieBtn);
+        movieList.appendChild(movieDiv);
+      });
+
+      header.onclick = () => {
+        movieList.style.display = movieList.style.display === 'flex' ? 'none' : 'flex';
+      };
+
+      colDiv.appendChild(header);
+      colDiv.appendChild(movieList);
+      container.appendChild(colDiv);
+    });
+  }
+</script>
+</body>
+</html>
